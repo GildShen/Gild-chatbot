@@ -66,7 +66,7 @@ def main():
         st_c_1 = st.container(border=True)
         with st_c_1:
             st.image(user_image)
-            st.markdown("**Ask me about topics like AI, Python, ML, or Topology — and I'll recommend relevant courses!**")
+            st.markdown("**Ask me about topics like AI, Python, ML, or Calculus — and I'll recommend relevant courses!**")
 
     st_c_chat = st.container(border=True)
 
