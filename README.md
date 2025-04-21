@@ -17,3 +17,5 @@ A simple Streamlit app that shows how to build a chatbot using OpenAI's GPT-3.5.
    ```
    $ streamlit run streamlit_app.py
    ```
+### Example Usage:
+- I want to learn Machine Learning
