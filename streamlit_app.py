@@ -6,12 +6,13 @@ import plotly.graph_objs as go
 from sklearn.decomposition import PCA
 from gensim.models import Word2Vec
 from gensim.utils import simple_preprocess
+from gensim.parsing.preprocessing import remove_stopwords
 
 # --- Word2Vec Training and Plotting Functions ---
 
-def train_word2vec_model(sentences):
-    tokenized_sentences = [simple_preprocess(sentence) for sentence in sentences]
-    model = Word2Vec(tokenized_sentences, vector_size=100, window=5, min_count=1, workers=2)
+def train_word2vec_model(sentences, sg_flag):
+    tokenized_sentences = [simple_preprocess(remove_stopwords(sentence)) for sentence in sentences]
+    model = Word2Vec(tokenized_sentences, vector_size=100, window=5, min_count=1, workers=2, sg=sg_flag)
     return model, tokenized_sentences
 
 def reduce_vectors(model):
@@ -111,7 +112,7 @@ def stream_data(stream_str):
 
 def main():
     st.set_page_config(
-        page_title='K-Assistant - Word2Vec Live Trainer',
+        page_title='K-Assistant - Word2Vec Trainer (SKIP-GRAM / CBOW)',
         layout='wide',
         initial_sidebar_state='auto',
         page_icon="img/favicon.ico"
@@ -127,6 +128,7 @@ def main():
 
     with st.sidebar:
         selected_lang = st.selectbox("Language", ["English", "繁體中文"], index=0)
+        model_type = st.selectbox("Model Type", ["SKIP-GRAM", "CBOW"])
         chart_type = st.selectbox("Chart Type", ["2D", "3D"])
 
     st_c_chat = st.container(border=True)
@@ -157,7 +159,8 @@ def main():
     if len(st.session_state.sentences) == 0:
         st.warning("⚠️ No sentences yet. Please input a sentence to start training Word2Vec.")
     else:
-        model, tokenized_sentences = train_word2vec_model(st.session_state.sentences)
+        sg_flag = 1 if model_type == "SKIP-GRAM" else 0
+        model, tokenized_sentences = train_word2vec_model(st.session_state.sentences, sg_flag)
         reduced_vectors = reduce_vectors(model)
 
         if chart_type == "2D":
