@@ -1,92 +1,171 @@
 import streamlit as st
-import pandas as pd
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 import time
 import re
+import numpy as np
+import plotly.graph_objs as go
+from sklearn.decomposition import PCA
+from gensim.models import Word2Vec
+from gensim.utils import simple_preprocess
 
-st.set_page_config(
-        page_title='AI Course Advisor - FifiBot',
-        layout='wide',
-        initial_sidebar_state='auto',
-        menu_items={
-            'Get Help': 'https://streamlit.io/',
-            'Report a bug': 'https://github.com',
-            'About': 'Course advisor powered by course dataset search'
-        },
-        page_icon="img/favicon.ico"
+# --- Word2Vec Training and Plotting Functions ---
+
+def train_word2vec_model(sentences):
+    tokenized_sentences = [simple_preprocess(sentence) for sentence in sentences]
+    model = Word2Vec(tokenized_sentences, vector_size=100, window=5, min_count=1, workers=2)
+    return model, tokenized_sentences
+
+def reduce_vectors(model):
+    word_vectors = np.array([model.wv[word] for word in model.wv.index_to_key])
+    pca = PCA(n_components=3)
+    reduced_vectors = pca.fit_transform(word_vectors)
+    return reduced_vectors
+
+def get_color_map():
+    return {
+        0: 'red', 1: 'blue', 2: 'green', 3: 'purple', 4: 'orange',
+        5: 'cyan', 6: 'magenta', 7: 'yellow', 8: 'brown', 9: 'pink'
+    }
+
+def plot_word2vec_2d(model, reduced_vectors, tokenized_sentences):
+    color_map = get_color_map()
+
+    word_colors = []
+    for word in model.wv.index_to_key:
+        for i, sentence in enumerate(tokenized_sentences):
+            if word in sentence:
+                word_colors.append(color_map[i % len(color_map)])
+                break
+
+    scatter = go.Scatter(
+        x=reduced_vectors[:, 0],
+        y=reduced_vectors[:, 1],
+        mode='markers+text',
+        text=model.wv.index_to_key,
+        textposition='top center',
+        marker=dict(color=word_colors, size=8),
+        hovertemplate="Word: %{text}"
     )
 
+    line_traces = []
+    for i, sentence in enumerate(tokenized_sentences):
+        line_vectors = [reduced_vectors[model.wv.key_to_index[word]] for word in sentence if word in model.wv]
+        if len(line_vectors) > 1:
+            line_trace = go.Scatter(
+                x=[vector[0] for vector in line_vectors],
+                y=[vector[1] for vector in line_vectors],
+                mode='lines',
+                line=dict(color=color_map[i % len(color_map)], width=1, dash='solid'),
+                showlegend=False
+            )
+            line_traces.append(line_trace)
 
-placeholderstr = "Please input your command"
+    fig = go.Figure(data=[scatter] + line_traces)
+    fig.update_layout(
+        xaxis_title="X",
+        yaxis_title="Y",
+        title="2D Word Embeddings (Updated)",
+        width=800,
+        height=800
+    )
+    return fig
+
+def plot_word2vec_3d(model, reduced_vectors, tokenized_sentences):
+    color_map = get_color_map()
+
+    word_colors = []
+    for word in model.wv.index_to_key:
+        for i, sentence in enumerate(tokenized_sentences):
+            if word in sentence:
+                word_colors.append(color_map[i % len(color_map)])
+                break
+
+    scatter = go.Scatter3d(
+        x=reduced_vectors[:, 0],
+        y=reduced_vectors[:, 1],
+        z=reduced_vectors[:, 2],
+        mode='markers+text',
+        text=model.wv.index_to_key,
+        textposition='top center',
+        marker=dict(color=word_colors, size=4)
+    )
+
+    fig = go.Figure(data=[scatter])
+    fig.update_layout(
+        scene=dict(xaxis_title="X", yaxis_title="Y", zaxis_title="Z"),
+        title="3D Word Embeddings (Updated)",
+        width=800,
+        height=800
+    )
+    return fig
+
+# --- Chatbot Setup ---
+
 user_name = "Fifi"
 user_image = "https://www.w3schools.com/howto/img_avatar.png"
-
-# Load course data from CSV
-@st.cache_data
-def load_courses():
-    return pd.read_csv("coursea_data.csv")
-
-courses_df = load_courses()
-vectorizer = TfidfVectorizer(stop_words='english')
-tfidf_matrix = vectorizer.fit_transform(courses_df['course_title'])
+placeholderstr = "Type a sentence to update Word2Vec plot"
 
 def stream_data(stream_str):
     for word in stream_str.split(" "):
         yield word + " "
         time.sleep(0.15)
 
-def search_courses(user_input, top_n=3, threshold=0.1):
-    input_vec = vectorizer.transform([user_input])
-    cosine_sim = cosine_similarity(input_vec, tfidf_matrix).flatten()
-    top_indices = cosine_sim.argsort()[::-1]
-    filtered_indices = [i for i in top_indices if cosine_sim[i] >= threshold][:top_n]
-    return courses_df.iloc[filtered_indices]
-
-def generate_response(prompt):
-    pattern = r'\b(i(\'?m| am| feel| think i(\'?)?m)?\s*(so\s+)?(stupid|ugly|dumb|idiot|worthless|loser|useless))\b'
-    if re.search(pattern, prompt, re.IGNORECASE):
-        return "Don't say that about yourself — you're here to learn and grow! 🌱"
-
-    results = search_courses(prompt)
-    if results.empty:
-        return "Sorry, I couldn’t find a matching course. Please try a different topic."
-
-    response = "Here are some courses you might find useful:\n"
-    for _, row in results.iterrows():
-        response += f"\n📘 **{row['course_title']}** ({row['course_organization']})\n"
-        response += f"⭐ Rating: {row['course_rating']} | Level: {row['course_difficulty']} | Enrolled: {row['course_students_enrolled']}\n"
-    return response
-
 def main():
-    st.title(f" {user_name}'s AI Course Advisor Bot")
+    st.set_page_config(
+        page_title='K-Assistant - Word2Vec Live Trainer',
+        layout='wide',
+        initial_sidebar_state='auto',
+        page_icon="img/favicon.ico"
+    )
 
-    with st.sidebar:
-        selected_lang = st.selectbox("Language", ["English", "繁體中文"], index=0)
-        st_c_1 = st.container(border=True)
-        with st_c_1:
-            st.image(user_image)
-            st.markdown("**Ask me about topics like AI, Python, ML, or Calculus — and I'll recommend relevant courses!**")
+    st.title(f"💬 {user_name}'s Word2Vec Chat Trainer")
 
-    st_c_chat = st.container(border=True)
+    if "sentences" not in st.session_state:
+        st.session_state.sentences = []  # No preset sentences
 
     if "messages" not in st.session_state:
         st.session_state.messages = []
-    else:
-        for msg in st.session_state.messages:
-            avatar = user_image if msg["role"] == "user" else None
-            st_c_chat.chat_message(msg["role"], avatar=avatar).markdown(msg["content"])
+
+    with st.sidebar:
+        selected_lang = st.selectbox("Language", ["English", "繁體中文"], index=0)
+        chart_type = st.selectbox("Chart Type", ["2D", "3D"])
+
+    st_c_chat = st.container(border=True)
+
+    # Chat history
+    for msg in st.session_state.messages:
+        if msg["role"] == "user":
+            st_c_chat.chat_message(msg["role"], avatar=user_image).markdown(msg["content"])
+        elif msg["role"] == "assistant":
+            st_c_chat.chat_message(msg["role"]).markdown(msg["content"])
 
     def chat(prompt: str):
         st_c_chat.chat_message("user", avatar=user_image).write(prompt)
         st.session_state.messages.append({"role": "user", "content": prompt})
 
-        response = generate_response(prompt)
+        # Add user sentence to Word2Vec training corpus
+        st.session_state.sentences.append(prompt)
+
+        response = f"Sentence added to Word2Vec model!"
         st.session_state.messages.append({"role": "assistant", "content": response})
         st_c_chat.chat_message("assistant").write_stream(stream_data(response))
 
     if prompt := st.chat_input(placeholder=placeholderstr, key="chat_bot"):
         chat(prompt)
+
+    # --- Update and Display the Word2Vec Visualization ---
+
+    if len(st.session_state.sentences) == 0:
+        st.warning("⚠️ No sentences yet. Please input a sentence to start training Word2Vec.")
+    else:
+        model, tokenized_sentences = train_word2vec_model(st.session_state.sentences)
+        reduced_vectors = reduce_vectors(model)
+
+        if chart_type == "2D":
+            fig = plot_word2vec_2d(model, reduced_vectors, tokenized_sentences)
+            st.plotly_chart(fig, use_container_width=True)
+        elif chart_type == "3D":
+            fig = plot_word2vec_3d(model, reduced_vectors, tokenized_sentences)
+            st.plotly_chart(fig, use_container_width=True)
 
 if __name__ == "__main__":
     main()
