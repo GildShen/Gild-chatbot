@@ -1,166 +1,117 @@
-from openai import OpenAI
-import time
-import re
-from dotenv import load_dotenv
 import os
 
-# Import ConversableAgent class
-import autogen
-from autogen import ConversableAgent, LLMConfig
-from autogen import AssistantAgent, UserProxyAgent, LLMConfig
-from autogen.code_utils import content_str
-from coding.constant import JOB_DEFINITION, RESPONSE_FORMAT
-from coding.utils import paging
-
 import streamlit as st
+from autogen import AssistantAgent, LLMConfig, UserProxyAgent
+from autogen.code_utils import content_str
+from dotenv import load_dotenv
 
-# Load environment variables from .env file
+from coding.utils import AGENT_AVATARS, display_session_msg, paging, render_chat_message
+
+
 load_dotenv(override=True)
 
-# https://ai.google.dev/gemini-api/docs/pricing
-# URL configurations
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', None)
-OPEN_API_KEY = os.getenv('OPEN_API_KEY', None)
+OPEN_API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("OPEN_API_KEY")
 
-placeholderstr = "Please input your command"
+placeholderstr = "Ask the assistant a question"
 user_name = "Gild"
-user_image = "https://www.w3schools.com/howto/img_avatar.png"
+user_image = AGENT_AVATARS["User"]
 
-seed = 42
+llm_config_openai = LLMConfig({
+    "api_type": "openai",
+    "model": "gpt-4o-mini",
+    "api_key": OPEN_API_KEY,
+})
 
-llm_config_gemini = LLMConfig(
-    api_type = "google", 
-    model="gemini-2.0-flash-lite",                    # The specific model
-    api_key=GEMINI_API_KEY,   # Authentication
-)
-
-llm_config_openai = LLMConfig(
-    api_type = "openai", 
-    model="gpt-4o-mini",                    # The specific model
-    api_key=OPEN_API_KEY,   # Authentication
-)
-
-with llm_config_gemini:
-    assistant = AssistantAgent(
-        name="assistant",
-        system_message=(
-        "You are a helpful storyteller assistant. "
-        "Please give me a story. After your result, say 'ALL DONE'. "
-        "Do not say 'ALL DONE' in the same response."
-        ),
-        max_consecutive_auto_reply=2
-    )
-
-user_proxy = UserProxyAgent(
-    "user_proxy",
-    human_input_mode="NEVER",
-    code_execution_config=False,
-    is_termination_msg=lambda x: content_str(x.get("content")).find("ALL DONE") >= 0,
-)
-
-# Function Declaration 
-
-def stream_data(stream_str):
-    for word in stream_str.split(" "):
-        yield word + " "
-        time.sleep(0.05)
 
 def save_lang():
-    st.session_state['lang_setting'] = st.session_state.get("language_select")
+    st.session_state["lang_setting"] = st.session_state.get("language_select")
+
 
 def main():
     st.set_page_config(
-        page_title='K-Assistant - The Residemy Agent',
-        layout='wide',
-        initial_sidebar_state='auto',
+        page_title="K-Assistant - Basic Agent",
+        layout="wide",
+        initial_sidebar_state="auto",
         menu_items={
-            'Get Help': 'https://streamlit.io/',
-            'Report a bug': 'https://github.com',
-            'About': 'About your application: **Hello world**'
-            },
-        page_icon="img/favicon.ico"
+            "Get Help": "https://streamlit.io/",
+            "Report a bug": "https://github.com",
+            "About": "Basic assistant-agent classroom demo",
+        },
+        page_icon="img/favicon.ico",
     )
 
-    # Show title and description.
-    st.title(f"💬 {user_name}'s Chatbot")
+    st.title(f"{user_name}'s Basic Assistant Agent")
+    st.caption("A classroom demo of one pure assistant agent answering the user's question.")
 
     with st.sidebar:
         paging()
-        selected_lang = st.selectbox("Language", ["English", "繁體中文"], index=0, on_change=save_lang, key="language_select")
-        if 'lang_setting' in st.session_state:
-            lang_setting = st.session_state['lang_setting']
-        else:
-            lang_setting = selected_lang
-            st.session_state['lang_setting'] = lang_setting
+
+        selected_lang = st.selectbox(
+            "Language",
+            ["English", "Traditional Chinese"],
+            index=0,
+            on_change=save_lang,
+            key="language_select",
+        )
+        lang_setting = st.session_state.get("lang_setting", selected_lang)
+        st.session_state["lang_setting"] = lang_setting
 
         st_c_1 = st.container(border=True)
         with st_c_1:
-            st.image("https://www.w3schools.com/howto/img_avatar.png")
+            st.image(user_image, caption="User")
 
     st_c_chat = st.container(border=True)
+    display_session_msg(st_c_chat)
 
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-    else:
-        for msg in st.session_state.messages:
-            if msg["role"] == "user":
-                if user_image:
-                    st_c_chat.chat_message(msg["role"],avatar=user_image).markdown((msg["content"]))
-                else:
-                    st_c_chat.chat_message(msg["role"]).markdown((msg["content"]))
-            elif msg["role"] == "assistant":
-                st_c_chat.chat_message(msg["role"]).markdown((msg["content"]))
-            else:
-                try:
-                    image_tmp = msg.get("image")
-                    if image_tmp:
-                        st_c_chat.chat_message(msg["role"],avatar=image_tmp).markdown((msg["content"]))
-                except:
-                    st_c_chat.chat_message(msg["role"]).markdown((msg["content"]))
+    if not OPEN_API_KEY:
+        st.warning("OPENAI_API_KEY is not set. Add it to your .env file before using the assistant.")
 
+    assistant = AssistantAgent(
+        name="Basic_Assistant_Agent",
+        system_message=(
+            "You are Basic_Assistant_Agent in a classroom demo about AI agents. "
+            "Answer the user's question clearly and directly. "
+            "Do not use tools. Do not ask another agent for help. "
+            f"Please output in {lang_setting}. "
+            "End your final response with 'ALL DONE'."
+        ),
+        llm_config=llm_config_openai,
+        max_consecutive_auto_reply=1,
+    )
 
-    story_template = ("Give me a story started from '##PROMPT##'."
-                      f"And remeber to mention user's name {user_name} in the end. Add some emoji in the end of each sentence."
-                      f"Please express in {lang_setting}")
-
-    classification_template = ("You are a classification agent, your job is to classify what ##PROMPT## is according to the job definition list in <JOB_DEFINITION>"
-    "<JOB_DEFINITION>"
-    f"{JOB_DEFINITION}"
-    "</JOB_DEFINITION>"
-    "Please output in JSON-format only."
-    "JSON-format is as below:"
-    f"{RESPONSE_FORMAT}"
-    "Let's think step by step."
-    f"Please output in {lang_setting}"
+    user_proxy = UserProxyAgent(
+        name="User",
+        human_input_mode="NEVER",
+        code_execution_config=False,
+        is_termination_msg=lambda x: content_str(x.get("content")).find("ALL DONE") >= 0,
     )
 
     def generate_response(prompt):
+        if not OPEN_API_KEY:
+            return "OPENAI_API_KEY is not set. Please add it to your .env file and restart Streamlit."
 
-        # prompt_template = f"Give me a story started from '{prompt}'"
-        prompt_template = story_template.replace('##PROMPT##',prompt)
-        # prompt_template = classification_template.replace('##PROMPT##',prompt)
         result = user_proxy.initiate_chat(
-        recipient=assistant,
-        message=prompt_template
+            recipient=assistant,
+            message=prompt,
+            max_turns=2,
         )
+        return result.summary.replace("ALL DONE", "").strip()
 
-        response = result.summary
-        return response
-
-
-    # Chat function section (timing included inside function)
     def chat(prompt: str):
-        st_c_chat.chat_message("user",avatar=user_image).write(prompt)
-        st.session_state.messages.append({"role": "user", "content": prompt})
+        render_chat_message(st_c_chat, "user", prompt, name="User", avatar=user_image)
 
         response = generate_response(prompt)
 
-        st_c_chat.chat_message("assistant").write(response)
-        st.session_state.messages.append({"role": "assistant", "content": response})
-        
-    
+        render_chat_message(
+            st_c_chat,
+            "assistant",
+            response,
+            name="Basic_Assistant_Agent",
+        )
+
     if prompt := st.chat_input(placeholder=placeholderstr, key="chat_bot"):
         chat(prompt)
+
 
 if __name__ == "__main__":
     main()

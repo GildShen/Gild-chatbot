@@ -5,3 +5,4 @@ chat_logs/
 
 chat_logs/
 .streamlit/
+.env

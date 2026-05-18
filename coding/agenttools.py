@@ -3,6 +3,12 @@ from coding.tools import search_expert, search_textbook, search_news, fetch_all_
 from datetime import datetime
 import streamlit as st
 
+
+@st.cache_data(ttl=600, show_spinner="Fetching recent news...")
+def cached_fetch_news():
+    return fetch_all_news(1, 1, list_type="all") ## How many news to fetch? Adjust as needed.
+
+
 def AG_search_expert(
     name: Annotated[Optional[str], "Expert name."] = None,
     discipline: Annotated[Optional[List[str]], "List of input strings containing disciplines to filter by."] = None,
@@ -67,7 +73,7 @@ def AG_search_news(
     """
     Tool wrapper: takes a list-of-dicts, runs search_news, returns list-of-dicts.
     """
-    df = fetch_all_news(1,5,list_type='all')
+    df = cached_fetch_news()
 
     # Apply search
     result_df = search_news(

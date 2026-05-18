@@ -1,231 +1,150 @@
-import streamlit as st
-
-import time
-import json
-from dotenv import load_dotenv
 import os
 
-# Import ConversableAgent class
-import autogen
-from autogen import ConversableAgent, LLMConfig, Agent
-from autogen import AssistantAgent, UserProxyAgent, LLMConfig, register_function
+import streamlit as st
+from autogen import ConversableAgent, LLMConfig
 from autogen.code_utils import content_str
-from coding.constant import JOB_DEFINITION, RESPONSE_FORMAT
-from coding.utils import show_chat_history, display_session_msg, save_messages_to_json, paging
-from coding.agenttools import AG_search_expert, AG_search_news, AG_search_textbook, get_time
+from dotenv import load_dotenv
 
-# Load environment variables from .env file
+from coding.utils import AGENT_AVATARS, display_session_msg, paging, show_chat_history
+
+
 load_dotenv(override=True)
 
-# https://ai.google.dev/gemini-api/docs/pricing
-# URL configurations
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', None)
-OPEN_API_KEY = os.getenv('OPEN_API_KEY', None)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", None)
+OPEN_API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("OPEN_API_KEY")
 
-placeholderstr = "Please input your command"
+placeholderstr = "Enter a topic or question for the student to learn"
 user_name = "Gild"
-user_image = "https://www.w3schools.com/howto/img_avatar.png"
+teacher_image = AGENT_AVATARS["Teacher_Agent"]
+student_image = AGENT_AVATARS["Student_Agent"]
 
-seed = 42
+llm_config_gemini = LLMConfig({
+    "api_type": "google",
+    "model": "gemini-2.0-flash",
+    "api_key": GEMINI_API_KEY,
+})
 
-llm_config_gemini = LLMConfig(
-    api_type = "google", 
-    model="gemini-2.0-flash", # The specific model
-    api_key=GEMINI_API_KEY,   # Authentication
-)
-
-llm_config_openai = LLMConfig(
-    api_type = "openai", 
-    model="gpt-4o-mini",    # The specific model
-    api_key=OPEN_API_KEY,   # Authentication
-)
-
-def stream_data(stream_str):
-    for word in stream_str.split(" "):
-        yield word + " "
-        time.sleep(0.05)
+llm_config_openai = LLMConfig({
+    "api_type": "openai",
+    "model": "gpt-4o-mini",
+    "api_key": OPEN_API_KEY,
+})
 
 def save_lang():
-    st.session_state['lang_setting'] = st.session_state.get("language_select")
+    st.session_state["lang_setting"] = st.session_state.get("language_select")
+
 
 def main():
     st.set_page_config(
-        page_title='K-Assistant - The Residemy Agent',
-        layout='wide',
-        initial_sidebar_state='auto',
+        page_title="K-Assistant - Two-Agent Demo",
+        layout="wide",
+        initial_sidebar_state="auto",
         menu_items={
-            'Get Help': 'https://streamlit.io/',
-            'Report a bug': 'https://github.com',
-            'About': 'About your application: **Hello world**'
-            },
-        page_icon="img/favicon.ico"
+            "Get Help": "https://streamlit.io/",
+            "Report a bug": "https://github.com",
+            "About": "Two-agent classroom demo",
+        },
+        page_icon="img/favicon.ico",
     )
 
-    # Show title and description.
-    st.title(f"🧑‍🤝‍🧑 {user_name}'s Duo Chatbot")
+    st.title(f"{user_name}'s Socratic Two-Agent Demo")
+    st.caption("A student agent tries to learn a topic while a teacher agent guides the student with questions.")
 
     with st.sidebar:
         paging()
 
-        selected_lang = st.selectbox("Language", ["English", "繁體中文"], index=0, on_change=save_lang, key="language_select")
-        if 'lang_setting' in st.session_state:
-            lang_setting = st.session_state['lang_setting']
-        else:
-            lang_setting = selected_lang
-            st.session_state['lang_setting'] = lang_setting
+        selected_lang = st.selectbox(
+            "Language",
+            ["English", "Traditional Chinese"],
+            index=0,
+            on_change=save_lang,
+            key="language_select",
+        )
+        lang_setting = st.session_state.get("lang_setting", selected_lang)
+        st.session_state["lang_setting"] = lang_setting
 
         st_c_1 = st.container(border=True)
         with st_c_1:
-            st.image("https://www.w3schools.com/howto/img_avatar.png")
+            st.image(teacher_image, caption="Teacher_Agent")
 
     st_c_chat = st.container(border=True)
-    
-    display_session_msg(st_c_chat, user_image)
+    display_session_msg(st_c_chat, teacher_image)
 
-    student_persona = f"""You are a student willing to learn. After your result, say 'ALL DONE'. Please output in {lang_setting}"""
+    student_persona = f"""
+    You are Student_Agent in a classroom demo about AI agents.
+    You are curious but not fully confident.
 
-    teacher_persona = f"""You are a teacher. Please try to use tools to answer student's question according to the following rules:
-    1. Check current time: use `get_time` tool to retrieve current date and time.
-    2. Search news by `AG_search_news` according to user's question, try to distill student's question within 1~2 words and facilitate it as query string. Also you may search by sections,  e.g. ['Taiwan News', 'World News', 'Sports', 'Front Page', 'Features', 'Editorials', 'Business','Bilingual Pages'], if you cannot distill it, use None instead. 
-    3. From the return news, randomly pick one news. Classify the news to the following <DISCIPLINE>:
-    <DISCIPLINE>
-        "Digital Sociology"
-        "Information Systems Strategy"
-        "Technology and Society"
-        "Empathetic and research-driven"
-        "Computational Social Science"
-    </DISCIPLINE>
-    4. Use `AG_search_expert` to select expert by <DISCIPLINE>, also Use `AG_search_textbook` to select a textbook by <DISCIPLINE>.
-    5. Explain to student a interesting essay within 500 words about the news using expert and textbook. Please remember to mention about the expert and textbook you cite.
+    Conversation behavior:
+    1. Start by explaining your current, possibly incomplete understanding of the user's topic.
+    2. Ask Teacher_Agent one concrete question about what confuses you.
+    3. After Teacher_Agent guides you, revise your understanding in your own words.
+    4. End your final message with "ALL DONE".
 
-    6. Please output in {lang_setting}
-
+    Keep each message short and natural, like a student in class.
+    Please output in {lang_setting}.
     """
-    with llm_config_openai:
-    # with llm_config_gemini:
-        student_agent = ConversableAgent(
-            name="Student_Agent",
-            system_message=student_persona,
-        )
 
-        teacher_agent = ConversableAgent(
-            name="Teacher_Agent",
-            system_message=teacher_persona,
-            is_termination_msg=lambda x: content_str(x.get("content")).find("ALL DONE") >= 0,
-            human_input_mode="NEVER",
-        )
+    teacher_persona = f"""
+    You are Teacher_Agent in a classroom demo about AI agents.
+    Your job is to guide Student_Agent using a Socratic teaching style.
 
-    user_proxy = UserProxyAgent(
-        "user_proxy",
-        human_input_mode="NEVER",
-        code_execution_config=False,
+    Conversation behavior:
+    1. Do not give a long lecture immediately.
+    2. Identify what part of the student's understanding is correct.
+    3. Ask one guiding question that helps the student reason further.
+    4. Give a short clarification or example only when needed.
+    5. Ask Student_Agent to revise their understanding at the end.
+
+    Keep each message concise and beginner-friendly.
+    Please output in {lang_setting}.
+    """
+
+    student_agent = ConversableAgent(
+        name="Student_Agent",
+        system_message=student_persona,
+        llm_config=llm_config_openai,
         is_termination_msg=lambda x: content_str(x.get("content")).find("ALL DONE") >= 0,
+        human_input_mode="NEVER",
     )
 
-
-    register_function(
-        AG_search_expert,
-        caller=teacher_agent,
-        executor=student_agent,
-        description="Search EXPERTS_LIST by name, discipline, or interest.",
+    teacher_agent = ConversableAgent(
+        name="Teacher_Agent",
+        system_message=teacher_persona,
+        llm_config=llm_config_openai,
+        is_termination_msg=lambda x: content_str(x.get("content")).find("ALL DONE") >= 0,
+        human_input_mode="NEVER",
     )
-
-    register_function(
-        AG_search_textbook,
-        caller=teacher_agent,
-        executor=student_agent,
-        description="Search TEXTBOOK_LIST by title, discipline, or related_expert.",
-    )
-
-    register_function(
-        AG_search_news,
-        caller=teacher_agent,
-        executor=student_agent,
-        description="Search a pre-fetched news DataFrame by keywords, sections, and date range.",
-    )
-
-    register_function(
-        get_time,
-        caller=teacher_agent,
-        executor=student_agent,
-        description="Get the current date & time.",
-    )
-
-    def st_reply_function(recipient, messages, sender, config):
-        messages_content = messages[-1]['content']
-        messages_role = messages[-1]['role']
-        
-        if messages_content and len(messages_content) > 0:
-            if messages_role != 'tool':
-                st_c_chat.chat_message("ai").write(messages_content)
-
-                message = {"role": messages_role, "content": messages_content}
-                # Append to session history
-                st.session_state.messages.append(message)
-
-            elif messages_role == 'tool':
-                st_c_chat.badge("Using tool...", icon="🛠️")
-
-        # message_to_send = {
-        #     "content": messages_content,
-        #     "role": "user",
-        # }
-        return False, None
-        # return True, messages
-
-    def ta_reply_function(recipient, messages, sender, config):
-        messages_content = messages[-1]['content']
-        messages_role = messages[-1]['role']
-
-        if messages_content and len(messages_content) > 0:
-            if messages_role != 'tool':
-                st_c_chat.chat_message("assistant", avatar=user_image).write(messages_content)
-                message = {"role": messages_role, "content": messages_content}
-                # Append to session history
-                st.session_state.messages.append(message)
-            elif messages_role == 'tool':
-                st_c_chat.badge("Using tool...", icon="🛠️")
-
-        # message_to_send = {
-        #     "content": messages_content,
-        #     "role": "user",
-        # }
-
-        return False, None
-        # return True, messages
-
-    student_agent.register_reply(
-        [Agent, None],
-        reply_func=st_reply_function, 
-        config={"callback": None},
-    ) 
-
-    teacher_agent.register_reply(
-        [Agent, None],
-        reply_func=ta_reply_function, 
-        config={"callback": None},
-    ) 
 
     def generate_response(prompt):
         chat_result = student_agent.initiate_chat(
             teacher_agent,
-            message = prompt,
+            message=(
+                "The user wants a classroom two-agent demo about this topic: "
+                f"{prompt}\n\n"
+                "Student_Agent should begin by stating an incomplete understanding and asking a question. "
+                "Teacher_Agent should guide with one Socratic question and a short clarification. "
+                "Student_Agent should finish by revising their understanding."
+            ),
+            max_turns=6,
             summary_method="reflection_with_llm",
         )
-
-        response = chat_result.chat_history
-        # st.write(response)
-        return response
+        return chat_result.chat_history
 
     def chat(prompt: str):
         response = generate_response(prompt)
-        conv_res = show_chat_history(st_c_chat, response, user_image)
-        messages = json.loads(conv_res)
-        file_path = save_messages_to_json(messages, output_dir="chat_logs")
-        st.write(f"Saved chat history to `{file_path}`")
+        show_chat_history(
+            st_c_chat,
+            response,
+            teacher_image,
+            avatar_map={
+                "Teacher_Agent": teacher_image,
+                "Student_Agent": student_image,
+            },
+        )
 
     if prompt := st.chat_input(placeholder=placeholderstr, key="chat_bot"):
         chat(prompt)
+
 
 if __name__ == "__main__":
     main()
