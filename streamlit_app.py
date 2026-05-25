@@ -69,7 +69,7 @@ def main():
     assistant = AssistantAgent(
         name="Basic_Assistant_Agent",
         system_message=(
-            "You are Basic_Assistant_Agent in a classroom demo about AI agents. "
+            f"You are Basic_Assistant_Agent in a classroom demo about AI agents. "
             "Answer the user's question clearly and directly. "
             "Do not use tools. Do not ask another agent for help. "
             f"Please output in {lang_setting}. "

@@ -22,6 +22,7 @@ def paging():
     st.page_link("pages/one_agent.py", label="Teacher Agent")
     st.page_link("pages/two_agents.py", label="Two Agents")
     st.page_link("pages/group_agents.py", label="Group Agents")
+    st.page_link("pages/cv_agent.py", label="CV Agent")
 
 
 def display_session_msg(container_obj, user_image: Optional[str] = None):

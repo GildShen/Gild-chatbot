@@ -1,0 +1,44 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>st_link_analysis_compat</title>
+
+    <link rel="stylesheet" href="styles.css" />
+
+    <!-- Cytoscape + optional layout extensions via CDN -->
+    <script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+    <script src="https://unpkg.com/cytoscape-fcose@2.2.0/cytoscape-fcose.js"></script>
+    <script src="https://unpkg.com/cytoscape-cola@2.5.1/cytoscape-cola.js"></script>
+    <script src="https://unpkg.com/cytoscape-cose-bilkent@4.1.0/cytoscape-cose-bilkent.js"></script>
+  </head>
+  <body>
+    <div id="container" class="container">
+      <div id="toolbar" class="toolbar">
+        <button id="btnFit" type="button">Fit</button>
+        <button id="btnCenter" type="button">Center</button>
+        <button id="btnExport" type="button">Export JSON</button>
+        <button id="btnFullscreen" type="button">Fullscreen</button>
+        <button id="btnRelayout" type="button">Re-layout</button>
+        <span class="spacer"></span>
+        <button id="btnRemove" type="button" style="display:none">Remove</button>
+        <button id="btnExpand" type="button" style="display:none">Expand</button>
+      </div>
+
+      <div id="cy" class="cy"></div>
+
+      <div id="legend" class="legend" style="display:none">
+        <div class="legend__title" id="legendTitle">Legend</div>
+        <div class="legend__body" id="legendBody"></div>
+      </div>
+
+      <div id="info" class="info" style="display:none">
+        <div class="info__title" id="infoTitle"></div>
+        <div class="info__body" id="infoBody"></div>
+      </div>
+    </div>
+
+    <script src="main.js"></script>
+  </body>
+</html>

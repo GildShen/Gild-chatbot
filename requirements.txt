@@ -1,5 +1,7 @@
 streamlit
 openai
+pymupdf
+python-docx
 autogen-agentchat
 autogen-ext[openai]
 ag2[gemini]
